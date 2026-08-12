@@ -21,14 +21,15 @@ jobs:
         shell: pwsh
         run: |
           $failed = $false
-          Get-ChildItem -Recurse -Filter '*.ps*1' -File | ForEach-Object {
+          # foreach plutot que ForEach-Object : portee de $failed sans ambiguite.
+          foreach ($file in Get-ChildItem -Recurse -Filter '*.ps*1' -File) {
               $errs = $null
               [System.Management.Automation.Language.Parser]::ParseFile(
-                  $_.FullName, [ref]$null, [ref]$errs) | Out-Null
+                  $file.FullName, [ref]$null, [ref]$errs) | Out-Null
               if ($errs) {
                   $failed = $true
                   foreach ($e in $errs) {
-                      Write-Host "::error file=$($_.FullName),line=$($e.Extent.StartLineNumber)::$($e.Message)"
+                      Write-Host "::error file=$($file.FullName),line=$($e.Extent.StartLineNumber)::$($e.Message)"
                   }
               }
           }
@@ -38,7 +39,7 @@ jobs:
       - name: Installer PSScriptAnalyzer et Pester
         shell: pwsh
         run: |
-          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
           Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
           Install-Module Pester -MinimumVersion 5.5.0 -Force -Scope CurrentUser
 
