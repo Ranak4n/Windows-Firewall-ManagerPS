@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: Analyse statique et tests
+    # windows-latest : le module NetSecurity et WPF n'existent que sous Windows.
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verifier la syntaxe PowerShell
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem -Recurse -Filter '*.ps*1' -File | ForEach-Object {
+              $errs = $null
+              [System.Management.Automation.Language.Parser]::ParseFile(
+                  $_.FullName, [ref]$null, [ref]$errs) | Out-Null
+              if ($errs) {
+                  $failed = $true
+                  foreach ($e in $errs) {
+                      Write-Host "::error file=$($_.FullName),line=$($e.Extent.StartLineNumber)::$($e.Message)"
+                  }
+              }
+          }
+          if ($failed) { exit 1 }
+          Write-Host 'Syntaxe OK'
+
+      - name: Installer PSScriptAnalyzer et Pester
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          Install-Module Pester -MinimumVersion 5.5.0 -Force -Scope CurrentUser
+
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./PSScriptAnalyzerSettings.psd1
+
+          foreach ($r in $results) {
+              # Les warnings sont remontes en annotation sans casser le build ;
+              # seules les erreurs sont bloquantes.
+              $level = if ($r.Severity -eq 'Error') { 'error' } else { 'warning' }
+              Write-Host "::$level file=$($r.ScriptPath),line=$($r.Line)::[$($r.RuleName)] $($r.Message)"
+          }
+
+          $summary = $results | Group-Object Severity | ForEach-Object { "$($_.Name): $($_.Count)" }
+          Write-Host "Resultat -> $($summary -join ', ')"
+
+          if ($results | Where-Object Severity -eq 'Error') {
+              Write-Host '::error::PSScriptAnalyzer a remonte des erreurs bloquantes.'
+              exit 1
+          }
+
+      - name: Tests Pester
+        shell: pwsh
+        run: |
+          if (-not (Test-Path ./tests)) {
+              Write-Host 'Aucun test pour le moment, etape ignoree.'
+              exit 0
+          }
+
+          $config = New-PesterConfiguration
+          $config.Run.Path = './tests'
+          $config.Run.Exit = $true
+          $config.Output.Verbosity = 'Detailed'
+          $config.TestResult.Enabled = $true
+          $config.TestResult.OutputPath = './TestResults/pester.xml'
+          Invoke-Pester -Configuration $config
+
+      - name: Publier les resultats de test
+        if: always() && hashFiles('TestResults/pester.xml') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: pester-results
+          path: TestResults/pester.xml
