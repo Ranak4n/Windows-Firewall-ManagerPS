@@ -131,26 +131,17 @@ function Get-ExecutableFromFolder {
         [Parameter(Mandatory)][string]$FolderPath
     )
 
+    # ATTENTION : PowerShell "deroule" les tableaux retournes par une fonction.
+    # Un 'return @()' ressort en $null, et un tableau d'un element ressort en
+    # scalaire. Le @() doit donc etre applique AU SITE D'APPEL, pas ici.
     try {
         # -Filter est nettement plus rapide que -Include et ne souffre pas de
         # ses effets de bord sur le premier niveau de l'arborescence.
-        return @(Get-ChildItem -LiteralPath $FolderPath -Recurse -File -Filter '*.exe' -ErrorAction SilentlyContinue)
+        Get-ChildItem -LiteralPath $FolderPath -Recurse -File -Filter '*.exe' -ErrorAction SilentlyContinue
     }
     catch {
         Write-Host "Erreur lors du parcours du dossier : $_" -ForegroundColor Red
-        return @()
     }
-}
-
-function Get-RuleByGroupLiteral {
-    param(
-        [Parameter(Mandatory)][string]$Group
-    )
-
-    # -Group interprete les wildcards cote pare-feu : passer "*" y supprimerait
-    # des centaines de regles systeme. On recupere tout et on filtre en -eq.
-    return @(Get-NetFirewallRule -ErrorAction SilentlyContinue |
-        Where-Object { $_.Group -eq $Group })
 }
 
 function New-BlockRuleForExe {
@@ -201,9 +192,13 @@ function Invoke-RuleCreation {
     $folder = Read-FolderPath
     $group = Read-RuleGroupName
 
-    $executables = Get-ExecutableFromFolder -FolderPath $folder
+    # Le @() est indispensable : sans lui, 0 executable donne $null (et
+    # $null.Count leve une exception sous Set-StrictMode) et 1 executable
+    # donne un scalaire non enumerable.
+    $executables = @(Get-ExecutableFromFolder -FolderPath $folder)
     if ($executables.Count -eq 0) {
         Write-Host "Aucun executable trouve dans $folder" -ForegroundColor Yellow
+        Write-Host "(sous-dossiers inclus)" -ForegroundColor DarkGray
         return
     }
 

@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Verifier la syntaxe PowerShell
         shell: pwsh
@@ -55,8 +55,13 @@ jobs:
               Write-Host "::$level file=$($r.ScriptPath),line=$($r.Line)::[$($r.RuleName)] $($r.Message)"
           }
 
-          $summary = $results | Group-Object Severity | ForEach-Object { "$($_.Name): $($_.Count)" }
-          Write-Host "Resultat -> $($summary -join ', ')"
+          if (-not $results) {
+              Write-Host 'PSScriptAnalyzer : aucun probleme detecte.'
+          }
+          else {
+              $summary = $results | Group-Object Severity | ForEach-Object { "$($_.Name): $($_.Count)" }
+              Write-Host "PSScriptAnalyzer : $($summary -join ', ')"
+          }
 
           if ($results | Where-Object Severity -eq 'Error') {
               Write-Host '::error::PSScriptAnalyzer a remonte des erreurs bloquantes.'

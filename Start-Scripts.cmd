@@ -13,8 +13,10 @@ rem PowerShell 7 (pwsh) en priorite, repli sur Windows PowerShell 5.1.
 set "PS_EXE=pwsh"
 where pwsh >nul 2>&1 || set "PS_EXE=powershell"
 
+rem Pas de -NoExit : la fenetre elevee doit se fermer quand l'utilisateur
+rem choisit "Quitter". La boucle de menu suffit a la maintenir ouverte.
 echo Demande des droits administrateur pour modifier les regles pare-feu...
 %PS_EXE% -NoProfile -ExecutionPolicy Bypass -Command ^
-    "Start-Process -FilePath '%PS_EXE%' -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-NoExit','-File','\"%PS_SCRIPT%\"'"
+    "Start-Process -FilePath '%PS_EXE%' -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','\"%PS_SCRIPT%\"'"
 
 endlocal
