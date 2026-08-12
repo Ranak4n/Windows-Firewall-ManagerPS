@@ -9,8 +9,12 @@ if not exist "%PS_SCRIPT%" (
     exit /b 1
 )
 
+rem PowerShell 7 (pwsh) en priorite, repli sur Windows PowerShell 5.1.
+set "PS_EXE=pwsh"
+where pwsh >nul 2>&1 || set "PS_EXE=powershell"
+
 echo Demande des droits administrateur pour modifier les regles pare-feu...
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "Start-Process PowerShell -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','""%PS_SCRIPT%""'" 
+%PS_EXE% -NoProfile -ExecutionPolicy Bypass -Command ^
+    "Start-Process -FilePath '%PS_EXE%' -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-NoExit','-File','\"%PS_SCRIPT%\"'"
 
 endlocal
