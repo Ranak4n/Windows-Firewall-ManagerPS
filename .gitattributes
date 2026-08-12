@@ -1,0 +1,33 @@
+# Normalisation des fins de ligne : Git stocke en LF, checkout en natif.
+# Complète core.autocrlf=true et garantit un comportement identique sur
+# toute machine qui clone le repo (y compris CI Linux).
+* text=auto
+
+# Scripts PowerShell : CRLF en local, c'est ce qu'attendent Windows PowerShell
+# 5.1 et les éditeurs Windows.
+*.ps1   text eol=crlf
+*.psm1  text eol=crlf
+*.psd1  text eol=crlf
+*.ps1xml text eol=crlf
+*.cmd   text eol=crlf
+*.bat   text eol=crlf
+
+# Scripts POSIX : toujours LF, sinon ils ne s'exécutent pas.
+*.sh    text eol=lf
+
+# Documentation / données
+*.md    text
+*.json  text
+*.xml   text
+*.yml   text
+*.yaml  text
+*.csv   text
+
+# Binaires : pas de conversion, pas de diff textuel
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.exe   binary
+*.dll   binary
+*.zip   binary
+*.wfw   binary

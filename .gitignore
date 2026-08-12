@@ -1,0 +1,87 @@
+# ---------------------------------------------------------------------------
+# Secrets / configuration locale  (JAMAIS committé)
+# ---------------------------------------------------------------------------
+*.key
+*.pem
+*.pfx
+*.p12
+*.cred
+*.credential
+secrets.json
+settings.local.json
+config.local.*
+.env
+.env.*
+
+# ---------------------------------------------------------------------------
+# Artefacts PowerShell
+# ---------------------------------------------------------------------------
+# Export-Clixml : contient souvent des SecureString / credentials
+*.clixml
+*.ps1xml.bak
+*.nupkg
+*.nuspec.bak
+/out/
+/build/
+/publish/
+/bin/
+/obj/
+
+# ---------------------------------------------------------------------------
+# Sorties propres au projet : exports/sauvegardes du pare-feu, rapports
+# ---------------------------------------------------------------------------
+# Export de stratégie Windows Firewall (netsh advfirewall export)
+*.wfw
+/backups/
+/exports/
+/reports/
+rules-*.json
+rules-*.csv
+
+# ---------------------------------------------------------------------------
+# Logs
+# ---------------------------------------------------------------------------
+*.log
+/logs/
+
+# ---------------------------------------------------------------------------
+# Tests (Pester) & couverture
+# ---------------------------------------------------------------------------
+/TestResults/
+testResults*.xml
+coverage*.xml
+*.coverage
+
+# ---------------------------------------------------------------------------
+# Éditeurs / IDE
+# ---------------------------------------------------------------------------
+.vs/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.idea/
+
+# ---------------------------------------------------------------------------
+# Windows
+# ---------------------------------------------------------------------------
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+desktop.ini
+$RECYCLE.BIN/
+*.lnk
+*.stackdump
+
+# ---------------------------------------------------------------------------
+# Divers
+# ---------------------------------------------------------------------------
+*.tmp
+*.temp
+*.bak
+*~
