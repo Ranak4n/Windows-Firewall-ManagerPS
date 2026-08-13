@@ -47,11 +47,14 @@ function Remove-FwmRuleSet {
         $failed = 0
 
         foreach ($set in $sets) {
-            foreach ($rule in $set.Rules) {
-                if (-not $PSCmdlet.ShouldProcess($rule.DisplayName, 'Supprimer la regle')) {
-                    continue
-                }
+            # Confirmation au niveau de l'ensemble et non de la regle : un
+            # ensemble de 12 regles ne doit pas declencher 12 invites.
+            $action = "Supprimer l'ensemble et ses $($set.RuleCount) regle(s)"
+            if (-not $PSCmdlet.ShouldProcess($set.SetName, $action)) {
+                continue
+            }
 
+            foreach ($rule in $set.Rules) {
                 try {
                     # Suppression par -Name, identifiant unique de la regle.
                     # Jamais par -Group, qui accepte les caracteres generiques.

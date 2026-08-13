@@ -11,6 +11,9 @@ function New-FwmTestDescription {
         par le module : les tests de lecture doivent valider le contrat de
         format, pas se contenter d'un aller-retour avec leur propre code.
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Fabrique de test : construit une chaine, aucun effet de bord.')]
     param(
         [string]$SetName = 'Demo',
         [string]$Root = 'C:\Apps\Demo',
@@ -37,6 +40,9 @@ function New-FakeFirewallRule {
         Imite la forme d'un objet retourne par Get-NetFirewallRule, limitee
         aux proprietes que le module consulte reellement.
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Fabrique de test : construit un objet en memoire.')]
     param(
         [string]$Name = [guid]::NewGuid().ToString(),
         [string]$DisplayName = 'Regle de test',
@@ -61,6 +67,9 @@ function New-TestExecutable {
         Cree des fichiers .exe vides dans un dossier temporaire et retourne
         le chemin du dossier.
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Fabrique de test : ecrit uniquement dans le TestDrive de Pester.')]
     param(
         [Parameter(Mandatory)][string]$Path,
         [string[]]$Name = @('app.exe')

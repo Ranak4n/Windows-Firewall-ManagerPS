@@ -1,5 +1,6 @@
 @{
     RootModule           = 'WindowsFirewallManager.psm1'
+    FormatsToProcess     = @('WindowsFirewallManager.format.ps1xml')
     ModuleVersion        = '0.1.0'
     GUID                 = '61c9d2f3-c098-4ab8-95ab-e984ab68f276'
     Author               = 'Ranak4n'

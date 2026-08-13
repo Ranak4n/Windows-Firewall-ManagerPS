@@ -17,16 +17,13 @@ logiciel, il détecte tous les `.exe` récursivement et crée les règles de
 blocage entrantes et sortantes, regroupées sous un nom commun pour pouvoir
 les gérer — ou les retirer — en bloc.
 
-## Statut
-
-🚧 **En refonte.** La version CLI actuelle est fonctionnelle. Une interface
-graphique WPF et un moteur extrait en module PowerShell sont en cours.
-
 ## Prérequis
 
 - Windows 10 / 11
-- PowerShell 7+ (recommandé) ou Windows PowerShell 5.1
-- **Droits administrateur** — toute modification de règle pare-feu les exige
+- **PowerShell 7+** pour l'interface graphique (thread STA et sélecteur de
+  dossier .NET 8+). Le module seul fonctionne aussi sous Windows PowerShell 5.1
+- **Droits administrateur** pour créer ou supprimer des règles. La consultation
+  fonctionne sans élévation
 
 ## Installation
 
@@ -37,26 +34,25 @@ cd Windows-Firewall-ManagerPS
 
 ## Utilisation
 
-Double-cliquez sur `Start-Scripts.cmd` (il demande l'élévation), ou depuis un
-terminal administrateur :
+Double-cliquez sur `tools\Start-FirewallManager.cmd` — il demande l'élévation
+et ouvre l'interface.
 
-```powershell
-pwsh -File .\Firewall-Manager.ps1
-```
+**Créer un blocage** : bouton *Nouveau blocage* → choisissez le dossier du
+logiciel dans le sélecteur Windows → la liste des exécutables trouvés
+s'affiche, cochez ceux à bloquer (décochez `uninstall.exe` si vous préférez
+le laisser tranquille) → nommez l'ensemble → *Créer les règles*.
 
-Le menu propose :
+**Retirer un blocage** : sélectionnez un ou plusieurs ensembles dans la liste
+principale, puis *Supprimer la sélection*. Une seule confirmation, quel que
+soit le nombre de règles.
 
-| Choix | Action |
-|-------|--------|
-| 1 | Créer les règles **entrantes** pour tous les `.exe` d'un dossier |
-| 2 | Créer les règles **sortantes** |
-| 3 | Créer les règles **entrantes et sortantes** |
-| 4 | Supprimer un groupe de règles et toutes les règles qu'il contient |
-| 5 | Quitter |
+Lancée sans élévation, l'interface affiche l'inventaire en lecture seule et
+propose un bouton pour se relancer en administrateur.
 
 Les groupes de règles sont préfixés par `*` afin de remonter en tête de liste
-dans `wf.msc`. Seuls ces groupes sont proposés à la suppression : les règles
-système ne peuvent pas être ciblées par erreur.
+dans `wf.msc`. Seules les règles portant les métadonnées de l'outil sont
+listées et supprimables : les règles système ne peuvent pas être ciblées par
+erreur.
 
 ## Le module
 
@@ -109,11 +105,12 @@ d'origine pour la resynchronisation prévue en phase 3.
 ## Feuille de route
 
 - [x] **Phase 0** — corriger et sécuriser la version CLI existante
-- [x] **Phase 1** — moteur extrait en module, 51 tests Pester
-- [ ] **Phase 2** — interface graphique WPF (sélecteur de dossier natif,
-      liste des ensembles, sélection multiple à la suppression)
+- [x] **Phase 1** — moteur extrait en module PowerShell testable
+- [x] **Phase 2** — interface graphique WPF ; la CLI est retirée
 - [ ] **Phase 3** — resynchronisation après mise à jour d'un logiciel,
       activation/désactivation temporaire, export/import JSON, annulation
+
+L'ancienne CLI reste consultable dans l'historique git (`git show 6818794`).
 
 ## Notes techniques
 
@@ -149,6 +146,20 @@ Les tests n'écrivent **jamais** dans le pare-feu : `New-NetFirewallRule`,
 mocks, et l'on vérifie que le module les appelle avec les bons paramètres.
 C'est la seule façon raisonnable de tester du code qui, exécuté pour de vrai,
 modifierait la configuration réseau de la machine.
+
+L'interface est couverte elle aussi : les fichiers XAML sont chargés pour de
+bon par `XamlReader`, et chaque nom d'élément demandé par `FindName` dans le
+code est confronté aux `x:Name` déclarés dans le balisage. Une faute de frappe
+qui ne se verrait qu'au clic est ainsi rattrapée par la CI.
+
+### Arborescence
+
+```
+src/WindowsFirewallManager/   moteur (module, aucune dépendance à l'affichage)
+src/Gui/                      interface WPF (XAML + câblage PowerShell)
+tests/                        suite Pester
+tools/                        lanceur avec élévation
+```
 
 La CI (GitHub Actions, `windows-latest`) vérifie la syntaxe, passe
 PSScriptAnalyzer et exécute la suite Pester à chaque push.

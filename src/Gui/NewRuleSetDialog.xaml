@@ -1,0 +1,160 @@
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Nouveau blocage"
+    Height="640" Width="820" MinHeight="520" MinWidth="640"
+    WindowStartupLocation="CenterOwner"
+    FontFamily="Segoe UI" FontSize="13"
+    Background="#FFF6F7F9">
+
+    <Window.Resources>
+        <Style x:Key="AccentButton" TargetType="Button">
+            <Setter Property="Background" Value="#FF2D5BE3"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="18,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#FF2449BC"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#FFB9C2D6"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="QuietButton" TargetType="Button">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Foreground" Value="#FF1F2430"/>
+            <Setter Property="Padding" Value="14,7"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="#FFD5DAE3" BorderThickness="1" CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#FFEFF2F7"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#FFA6AEBE"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#FF3C4658"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,0,0,5"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Etape 1 : dossier -->
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="1. Dossier du logiciel" Style="{StaticResource FieldLabel}"/>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="TxtFolder" Grid.Column="0" Padding="8,7"
+                         BorderBrush="#FFD5DAE3" VerticalContentAlignment="Center"/>
+                <Button x:Name="BtnBrowse" Grid.Column="1" Content="Parcourir..."
+                        Style="{StaticResource QuietButton}" Margin="8,0,0,0"/>
+            </Grid>
+            <TextBlock Text="Tous les executables du dossier et de ses sous-dossiers seront proposes."
+                       Foreground="#FF8A93A6" FontSize="12" Margin="0,5,0,0"/>
+        </StackPanel>
+
+        <!-- Etape 2 : nom -->
+        <StackPanel Grid.Row="1" Margin="0,18,0,0">
+            <TextBlock Text="2. Nom de l'ensemble" Style="{StaticResource FieldLabel}"/>
+            <TextBox x:Name="TxtSetName" Padding="8,7" BorderBrush="#FFD5DAE3"
+                     VerticalContentAlignment="Center"/>
+            <TextBlock x:Name="TxtGroupPreview" Foreground="#FF8A93A6" FontSize="12" Margin="0,5,0,0"
+                       Text="Groupe pare-feu : *FWM - ..."/>
+        </StackPanel>
+
+        <!-- Etape 3 : sens -->
+        <StackPanel Grid.Row="2" Margin="0,18,0,0">
+            <TextBlock Text="3. Trafic a bloquer" Style="{StaticResource FieldLabel}"/>
+            <ComboBox x:Name="CmbDirection" Padding="8,6" BorderBrush="#FFD5DAE3" SelectedIndex="0">
+                <ComboBoxItem Content="Entrant et sortant (blocage complet)"/>
+                <ComboBoxItem Content="Sortant uniquement"/>
+                <ComboBoxItem Content="Entrant uniquement"/>
+            </ComboBox>
+        </StackPanel>
+
+        <!-- Etape 4 : selection -->
+        <Grid Grid.Row="3" Margin="0,18,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="4. Executables a bloquer" Style="{StaticResource FieldLabel}"
+                       VerticalAlignment="Center"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button x:Name="BtnCheckAll" Content="Tout cocher" Style="{StaticResource QuietButton}"/>
+                <Button x:Name="BtnUncheckAll" Content="Tout decocher" Style="{StaticResource QuietButton}" Margin="8,0,0,0"/>
+            </StackPanel>
+        </Grid>
+
+        <ListView x:Name="LstExes" Grid.Row="4"
+                  BorderBrush="#FFD5DAE3" BorderThickness="1" Background="White"
+                  ScrollViewer.HorizontalScrollBarVisibility="Auto">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Width="42">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding Selected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          HorizontalAlignment="Center"/>
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                    <GridViewColumn Header="Executable" Width="230" DisplayMemberBinding="{Binding Name}"/>
+                    <GridViewColumn Header="Taille" Width="90" DisplayMemberBinding="{Binding SizeText}"/>
+                    <GridViewColumn Header="Emplacement relatif" Width="360" DisplayMemberBinding="{Binding RelativePath}"/>
+                </GridView>
+            </ListView.View>
+        </ListView>
+
+        <TextBlock x:Name="TxtSummary" Grid.Row="5" Margin="0,10,0,0"
+                   Foreground="#FF3C4658"
+                   Text="Choisissez un dossier pour commencer."/>
+
+        <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="BtnCancel" Content="Annuler" Style="{StaticResource QuietButton}"/>
+            <Button x:Name="BtnCreate" Content="Creer les regles" Style="{StaticResource AccentButton}"
+                    Margin="10,0,0,0" IsEnabled="False"/>
+        </StackPanel>
+    </Grid>
+</Window>

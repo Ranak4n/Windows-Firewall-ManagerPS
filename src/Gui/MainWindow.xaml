@@ -1,0 +1,148 @@
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Windows Firewall Manager"
+    Height="580" Width="940" MinHeight="420" MinWidth="720"
+    WindowStartupLocation="CenterScreen"
+    FontFamily="Segoe UI" FontSize="13"
+    Background="#FFF6F7F9">
+
+    <!--
+        Pas de x:Class ni d'attributs Click : XamlReader ne sait pas charger
+        de code-behind. Les gestionnaires sont cables cote PowerShell via
+        Add_Click sur les elements retrouves par FindName.
+    -->
+
+    <Window.Resources>
+        <Style x:Key="AccentButton" TargetType="Button">
+            <Setter Property="Background" Value="#FF2D5BE3"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="16,7"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#FF2449BC"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#FFB9C2D6"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="QuietButton" TargetType="Button">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Foreground" Value="#FF1F2430"/>
+            <Setter Property="Padding" Value="16,7"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="#FFD5DAE3" BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#FFEFF2F7"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#FFA6AEBE"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- En-tete -->
+        <Border Grid.Row="0" Background="#FF1B2138" Padding="20,16">
+            <StackPanel>
+                <TextBlock Text="Windows Firewall Manager"
+                           Foreground="White" FontSize="19" FontWeight="SemiBold"/>
+                <TextBlock Text="Bloquer l'acces reseau d'un logiciel, entrant et sortant, en quelques clics."
+                           Foreground="#FF9FA9C4" Margin="0,3,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Banniere d'elevation, masquee si la session est deja administrateur -->
+        <Border x:Name="BorderElevation" Grid.Row="1"
+                Background="#FFFDF3D6" BorderBrush="#FFE8CE7A" BorderThickness="0,0,0,1"
+                Padding="20,10" Visibility="Collapsed">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="TxtElevation" Grid.Column="0" VerticalAlignment="Center"
+                           Foreground="#FF6B531A" TextWrapping="Wrap"
+                           Text="Session non elevee : consultation possible, mais la creation et la suppression de regles necessitent les droits administrateur."/>
+                <Button x:Name="BtnElevate" Grid.Column="1" Content="Relancer en administrateur"
+                        Style="{StaticResource QuietButton}" Margin="12,0,0,0"/>
+            </Grid>
+        </Border>
+
+        <!-- Barre d'actions -->
+        <Border Grid.Row="2" Background="White" BorderBrush="#FFE1E4EA" BorderThickness="0,0,0,1" Padding="20,12">
+            <StackPanel Orientation="Horizontal">
+                <Button x:Name="BtnNew" Content="Nouveau blocage" Style="{StaticResource AccentButton}"/>
+                <Button x:Name="BtnRemove" Content="Supprimer la selection" Style="{StaticResource QuietButton}" Margin="10,0,0,0"/>
+                <Button x:Name="BtnRefresh" Content="Actualiser" Style="{StaticResource QuietButton}" Margin="10,0,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Liste des ensembles -->
+        <Grid Grid.Row="3" Margin="20,16,20,12">
+            <ListView x:Name="LstSets"
+                      SelectionMode="Extended"
+                      BorderBrush="#FFE1E4EA" BorderThickness="1"
+                      Background="White"
+                      ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                <ListView.View>
+                    <GridView>
+                        <GridViewColumn Header="Ensemble" Width="180" DisplayMemberBinding="{Binding SetName}"/>
+                        <GridViewColumn Header="Regles" Width="70" DisplayMemberBinding="{Binding RuleCount}"/>
+                        <GridViewColumn Header="Entrant" Width="70" DisplayMemberBinding="{Binding Inbound}"/>
+                        <GridViewColumn Header="Sortant" Width="70" DisplayMemberBinding="{Binding Outbound}"/>
+                        <GridViewColumn Header="Etat" Width="80" DisplayMemberBinding="{Binding StateText}"/>
+                        <GridViewColumn Header="Dossier d'origine" Width="380" DisplayMemberBinding="{Binding Root}"/>
+                    </GridView>
+                </ListView.View>
+            </ListView>
+
+            <!-- Message affiche quand aucun ensemble n'existe encore -->
+            <TextBlock x:Name="TxtEmpty"
+                       Text="Aucun blocage enregistre. Cliquez sur Nouveau blocage pour commencer."
+                       Foreground="#FF8A93A6" HorizontalAlignment="Center" VerticalAlignment="Center"
+                       Visibility="Collapsed" IsHitTestVisible="False"/>
+        </Grid>
+
+        <!-- Barre d'etat -->
+        <Border Grid.Row="4" Background="White" BorderBrush="#FFE1E4EA" BorderThickness="0,1,0,0" Padding="20,9">
+            <TextBlock x:Name="TxtStatus" Foreground="#FF5A6478" Text="Pret."/>
+        </Border>
+    </Grid>
+</Window>

@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Vues par defaut des objets du module.
+    Sans cela, la propriete Rules deverse les objets CIM bruts
+    (MSFT_NetFirewallRule (CreationClassName = ...)) dans la console.
+    Elle reste accessible par programmation, simplement plus affichee.
+-->
+<Configuration>
+  <ViewDefinitions>
+
+    <View>
+      <Name>Fwm.RuleSet</Name>
+      <ViewSelectedBy>
+        <TypeName>Fwm.RuleSet</TypeName>
+      </ViewSelectedBy>
+      <TableControl>
+        <TableHeaders>
+          <TableColumnHeader><Label>Ensemble</Label><Width>24</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Regles</Label><Width>7</Width><Alignment>Right</Alignment></TableColumnHeader>
+          <TableColumnHeader><Label>Entrant</Label><Width>8</Width><Alignment>Right</Alignment></TableColumnHeader>
+          <TableColumnHeader><Label>Sortant</Label><Width>8</Width><Alignment>Right</Alignment></TableColumnHeader>
+          <TableColumnHeader><Label>Actif</Label><Width>6</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Dossier</Label></TableColumnHeader>
+        </TableHeaders>
+        <TableRowEntries>
+          <TableRowEntry>
+            <TableColumnItems>
+              <TableColumnItem><PropertyName>SetName</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>RuleCount</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>Inbound</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>Outbound</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>Enabled</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>Root</PropertyName></TableColumnItem>
+            </TableColumnItems>
+          </TableRowEntry>
+        </TableRowEntries>
+      </TableControl>
+    </View>
+
+    <View>
+      <Name>Fwm.RuleSetResult</Name>
+      <ViewSelectedBy>
+        <TypeName>Fwm.RuleSetResult</TypeName>
+      </ViewSelectedBy>
+      <TableControl>
+        <TableHeaders>
+          <TableColumnHeader><Label>Ensemble</Label><Width>24</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Creees</Label><Width>8</Width><Alignment>Right</Alignment></TableColumnHeader>
+          <TableColumnHeader><Label>Ignorees</Label><Width>9</Width><Alignment>Right</Alignment></TableColumnHeader>
+          <TableColumnHeader><Label>Echecs</Label><Width>8</Width><Alignment>Right</Alignment></TableColumnHeader>
+          <TableColumnHeader><Label>Dossier</Label></TableColumnHeader>
+        </TableHeaders>
+        <TableRowEntries>
+          <TableRowEntry>
+            <TableColumnItems>
+              <TableColumnItem><PropertyName>SetName</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>Created</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>Skipped</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>Failed</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>Root</PropertyName></TableColumnItem>
+            </TableColumnItems>
+          </TableRowEntry>
+        </TableRowEntries>
+      </TableControl>
+    </View>
+
+    <View>
+      <Name>Fwm.RemoveResult</Name>
+      <ViewSelectedBy>
+        <TypeName>Fwm.RemoveResult</TypeName>
+      </ViewSelectedBy>
+      <TableControl>
+        <TableHeaders>
+          <TableColumnHeader><Label>Ensemble</Label><Width>24</Width></TableColumnHeader>
+          <TableColumnHeader><Label>Supprimees</Label><Width>11</Width><Alignment>Right</Alignment></TableColumnHeader>
+          <TableColumnHeader><Label>Echecs</Label><Width>8</Width><Alignment>Right</Alignment></TableColumnHeader>
+        </TableHeaders>
+        <TableRowEntries>
+          <TableRowEntry>
+            <TableColumnItems>
+              <TableColumnItem><PropertyName>SetName</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>Removed</PropertyName></TableColumnItem>
+              <TableColumnItem><PropertyName>Failed</PropertyName></TableColumnItem>
+            </TableColumnItems>
+          </TableRowEntry>
+        </TableRowEntries>
+      </TableControl>
+    </View>
+
+  </ViewDefinitions>
+</Configuration>
