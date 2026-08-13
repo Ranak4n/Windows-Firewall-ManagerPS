@@ -58,10 +58,58 @@ Les groupes de règles sont préfixés par `*` afin de remonter en tête de list
 dans `wf.msc`. Seuls ces groupes sont proposés à la suppression : les règles
 système ne peuvent pas être ciblées par erreur.
 
+## Le module
+
+Le moteur est isolé dans un module PowerShell sans dépendance à l'affichage :
+il retourne des objets, que la CLI, l'interface graphique et les tests
+consomment indifféremment.
+
+```powershell
+Import-Module .\src\WindowsFirewallManager\WindowsFirewallManager.psd1
+
+# Bloquer tous les exécutables d'un logiciel, entrant et sortant
+New-FwmRuleSet -SetName 'Spotify' -Path "$env:APPDATA\Spotify"
+
+# Voir ce qui serait fait, sans rien créer
+New-FwmRuleSet -SetName 'Jeu' -Path 'D:\Jeu' -Direction Outbound -WhatIf
+
+# Ne bloquer qu'une sélection d'exécutables
+$exes = @(Get-FwmExecutable -Path 'D:\Jeu' | Where-Object Name -ne 'launcher.exe')
+New-FwmRuleSet -SetName 'Jeu' -Executable $exes
+
+# Inventorier (aucune élévation nécessaire)
+Get-FwmRuleSet | Format-Table SetName, RuleCount, Inbound, Outbound, Enabled
+
+# Retirer un ensemble
+Remove-FwmRuleSet -SetName 'Spotify'
+```
+
+| Fonction | Rôle |
+|---|---|
+| `New-FwmRuleSet` | Crée les règles de blocage. Idempotent, supporte `-WhatIf` |
+| `Get-FwmRuleSet` | Inventorie les ensembles. Lecture seule, sans élévation |
+| `Remove-FwmRuleSet` | Supprime un ensemble, règle par règle, par identifiant unique |
+| `Get-FwmExecutable` | Liste les `.exe` d'un dossier |
+| `Test-FwmElevation` | Indique si la session est élevée |
+
+### Identification des règles
+
+Chaque règle porte un bloc de métadonnées dans sa description :
+
+```
+Blocage sortant de Spotify.exe (ensemble 'Spotify'). Créé par Windows
+Firewall Manager. [FWM]{"v":1,"set":"Spotify","root":"...","exe":"...",
+"dir":"Outbound","created":"2026-08-13T21:00:00Z"}[/FWM]
+```
+
+C'est ce qui permet d'identifier nos règles avec certitude — une règle sans ce
+bloc, ou au bloc incomplet, est toujours ignorée — et de retrouver le dossier
+d'origine pour la resynchronisation prévue en phase 3.
+
 ## Feuille de route
 
 - [x] **Phase 0** — corriger et sécuriser la version CLI existante
-- [ ] **Phase 1** — extraire le moteur en module PowerShell testable (Pester)
+- [x] **Phase 1** — moteur extrait en module, 51 tests Pester
 - [ ] **Phase 2** — interface graphique WPF (sélecteur de dossier natif,
       liste des ensembles, sélection multiple à la suppression)
 - [ ] **Phase 3** — resynchronisation après mise à jour d'un logiciel,
@@ -86,11 +134,24 @@ ne sont pas prises en charge à ce jour.
 
 ```powershell
 Install-Module PSScriptAnalyzer -Scope CurrentUser
+Install-Module Pester -MinimumVersion 5.5.0 -Scope CurrentUser -SkipPublisherCheck
+
 Invoke-ScriptAnalyzer -Path . -Recurse -Settings .\PSScriptAnalyzerSettings.psd1
+Invoke-Pester -Path .\tests
 ```
 
+`-SkipPublisherCheck` est nécessaire : Windows livre une version 3.x de Pester
+signée par Microsoft, et l'installation d'une 5.x côte à côte est sinon
+refusée pour cause de signataire différent.
+
+Les tests n'écrivent **jamais** dans le pare-feu : `New-NetFirewallRule`,
+`Get-NetFirewallRule` et `Remove-NetFirewallRule` sont interceptés par des
+mocks, et l'on vérifie que le module les appelle avec les bons paramètres.
+C'est la seule façon raisonnable de tester du code qui, exécuté pour de vrai,
+modifierait la configuration réseau de la machine.
+
 La CI (GitHub Actions, `windows-latest`) vérifie la syntaxe, passe
-PSScriptAnalyzer et exécutera les tests Pester dès qu'ils existeront.
+PSScriptAnalyzer et exécute la suite Pester à chaque push.
 
 ## Licence
 
