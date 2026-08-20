@@ -12,6 +12,9 @@
 *.cmd   text eol=crlf
 *.bat   text eol=crlf
 
+# Interface WPF : encodes en UTF-8 avec BOM pour les accents.
+*.xaml  text eol=crlf
+
 # Scripts POSIX : toujours LF, sinon ils ne s'exécutent pas.
 *.sh    text eol=lf
 

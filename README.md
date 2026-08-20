@@ -42,9 +42,17 @@ logiciel dans le sélecteur Windows → la liste des exécutables trouvés
 s'affiche, cochez ceux à bloquer (décochez `uninstall.exe` si vous préférez
 le laisser tranquille) → nommez l'ensemble → *Créer les règles*.
 
+Pendant la création, le panneau *Journal des opérations* affiche chaque règle
+au fur et à mesure. Clic droit sur un exécutable pour copier son chemin
+complet, ou `Ctrl+C` sur une sélection multiple.
+
 **Retirer un blocage** : sélectionnez un ou plusieurs ensembles dans la liste
 principale, puis *Supprimer la sélection*. Une seule confirmation, quel que
 soit le nombre de règles.
+
+**Vérifier dans Windows** : le bouton *Ouvrir le Pare-feu Windows* lance
+`wf.msc`. Les règles de l'outil y apparaissent en tête de liste grâce au
+préfixe `*`.
 
 Lancée sans élévation, l'interface affiche l'inventaire en lecture seule et
 propose un bouton pour se relancer en administrateur.
@@ -107,8 +115,9 @@ d'origine pour la resynchronisation prévue en phase 3.
 - [x] **Phase 0** — corriger et sécuriser la version CLI existante
 - [x] **Phase 1** — moteur extrait en module PowerShell testable
 - [x] **Phase 2** — interface graphique WPF ; la CLI est retirée
-- [ ] **Phase 3** — resynchronisation après mise à jour d'un logiciel,
-      activation/désactivation temporaire, export/import JSON, annulation
+- [ ] **Phase 3** — édition d'un ensemble existant, resynchronisation après
+      mise à jour d'un logiciel, activation/désactivation temporaire,
+      export/import JSON, annulation
 
 L'ancienne CLI reste consultable dans l'historique git (`git show 6818794`).
 

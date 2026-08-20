@@ -79,6 +79,48 @@ Describe 'New-FwmRuleSet' {
         }
     }
 
+    Context 'Compte rendu via -Notify' {
+
+        It 'signale chaque regle creee' {
+            # C'est ce canal qui alimente le journal de l'interface pendant
+            # l'operation, plutot que d'attendre le bilan final.
+            $folder = New-TestExecutable -Path (Join-Path $TestDrive 'notify') -Name @('a.exe', 'b.exe')
+            $events = New-Object System.Collections.Generic.List[object]
+
+            New-FwmRuleSet -SetName 'Demo' -Path $folder -Direction Outbound -Confirm:$false `
+                -Notify { param($info) $events.Add($info) }.GetNewClosure() | Out-Null
+
+            $events.Count | Should -Be 2
+            @($events | Where-Object { $_.Status -eq 'Created' }).Count | Should -Be 2
+            $events[0].DisplayName | Should -BeLike '*FWM - Demo*'
+            $events[0].Direction | Should -Be 'Outbound'
+        }
+
+        It 'signale aussi les regles ignorees' {
+            $folder = New-TestExecutable -Path (Join-Path $TestDrive 'notifyskip') -Name @('a.exe')
+            $exePath = Join-Path (Resolve-Path $folder).Path 'a.exe'
+
+            Mock -ModuleName WindowsFirewallManager Get-NetFirewallRule {
+                New-FakeFirewallRule -Description (New-FwmTestDescription -SetName 'Demo' -ExecutablePath $exePath -Direction 'Outbound')
+            }
+
+            $events = New-Object System.Collections.Generic.List[object]
+
+            New-FwmRuleSet -SetName 'Demo' -Path $folder -Direction Outbound -Confirm:$false `
+                -Notify { param($info) $events.Add($info) }.GetNewClosure() | Out-Null
+
+            $events.Count | Should -Be 1
+            $events[0].Status | Should -Be 'Skipped'
+        }
+
+        It 'fonctionne sans -Notify' {
+            $folder = New-TestExecutable -Path (Join-Path $TestDrive 'sansnotify') -Name @('a.exe')
+
+            { New-FwmRuleSet -SetName 'Demo' -Path $folder -Direction Outbound -Confirm:$false } |
+                Should -Not -Throw
+        }
+    }
+
     Context 'Selection explicite d executables' {
 
         It 'ne bloque que les executables fournis' {

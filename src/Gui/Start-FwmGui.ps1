@@ -1,14 +1,14 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 <#
 .SYNOPSIS
     Interface graphique de Windows Firewall Manager.
 
 .DESCRIPTION
     Coquille WPF au-dessus du module WindowsFirewallManager : toute la logique
-    metier reste dans le module, ce fichier ne fait qu'afficher et collecter.
+    métier reste dans le module, ce fichier ne fait qu'afficher et collecter.
 
-    PowerShell 7 est requis : la fenetre a besoin d'un thread STA (que pwsh
-    fournit par defaut) et le selecteur de dossier moderne n'existe qu'a
+    PowerShell 7 est requis : la fenêtre a besoin d'un thread STA (que pwsh
+    fournit par défaut) et le sélecteur de dossier moderne n'existe qu'à
     partir de .NET 8.
 #>
 [CmdletBinding()]
@@ -21,15 +21,17 @@ Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName PresentationCore
 Add-Type -AssemblyName WindowsBase
 
-$moduleManifest = Join-Path $PSScriptRoot '..\WindowsFirewallManager\WindowsFirewallManager.psd1'
-Import-Module $moduleManifest -Force
+Import-Module (Join-Path $PSScriptRoot '..\WindowsFirewallManager\WindowsFirewallManager.psd1') -Force
+. (Join-Path $PSScriptRoot 'GuiHelpers.ps1')
 
 # ---------------------------------------------------------------------------
 # Types de liaison
 #
-# WPF lie mal les PSCustomObject : on passe par de vraies classes. Seule
-# FwmExeItem implemente INotifyPropertyChanged, pour que "Tout cocher"
-# se repercute sur les cases affichees.
+# WPF lie mal les PSCustomObject : on passe par de vraies classes. FwmExeItem
+# implémente INotifyPropertyChanged, ce qui sert deux fois : les cases à
+# cocher se rafraîchissent quand « Tout cocher » modifie les objets, et le
+# décompte se met à jour sur l'événement de changement plutôt que sur un
+# événement souris.
 # ---------------------------------------------------------------------------
 
 if (-not ('FwmExeItem' -as [type])) {
@@ -83,7 +85,7 @@ public class FwmSetItem
 }
 
 # ---------------------------------------------------------------------------
-# Utilitaires
+# Utilitaires d'interface
 # ---------------------------------------------------------------------------
 
 function Import-FwmXaml {
@@ -94,15 +96,17 @@ function Import-FwmXaml {
         throw "Fichier d'interface introuvable : $path"
     }
 
+    # Les fichiers sont encodés en UTF-8 avec BOM : PowerShell le retire à la
+    # lecture, les accents arrivent intacts jusqu'à XamlReader.
     $xaml = Get-Content -LiteralPath $path -Raw
     return [System.Windows.Markup.XamlReader]::Parse($xaml)
 }
 
 function Invoke-FwmUiRefresh {
     <#
-        Force un rafraichissement immediat de la fenetre. Les operations sur
-        le pare-feu sont synchrones : sans cela l'utilisateur ne verrait pas
-        le message d'attente avant le gel de quelques secondes.
+        Force un rafraîchissement immédiat de la fenêtre. Les opérations sur
+        le pare-feu sont synchrones : sans cela, ni le message d'attente ni
+        les lignes du journal ne s'afficheraient avant la fin du traitement.
     #>
     param([Parameter(Mandatory)]$Window)
 
@@ -115,7 +119,7 @@ function Invoke-FwmUiRefresh {
 function Select-FwmFolder {
     param([string]$Title = 'Choisissez le dossier du logiciel')
 
-    # OpenFolderDialog (.NET 8+) est le selecteur moderne de Windows.
+    # OpenFolderDialog (.NET 8+) est le sélecteur moderne de Windows.
     if ('Microsoft.Win32.OpenFolderDialog' -as [type]) {
         $dialog = New-Object Microsoft.Win32.OpenFolderDialog
         $dialog.Title = $Title
@@ -133,13 +137,34 @@ function Select-FwmFolder {
     return $null
 }
 
-function Format-FwmSize {
-    param([long]$Bytes)
+function Copy-FwmTextToClipboard {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
 
-    if ($Bytes -ge 1GB) { return '{0:N1} Go' -f ($Bytes / 1GB) }
-    if ($Bytes -ge 1MB) { return '{0:N1} Mo' -f ($Bytes / 1MB) }
-    if ($Bytes -ge 1KB) { return '{0:N0} Ko' -f ($Bytes / 1KB) }
-    return "$Bytes o"
+    if ([string]::IsNullOrEmpty($Text)) { return }
+
+    try {
+        [System.Windows.Clipboard]::SetText($Text)
+    }
+    catch {
+        # Le presse-papiers peut être verrouillé par une autre application.
+        Write-Warning "Copie impossible : $_"
+    }
+}
+
+function Get-FwmListViewItemUnderCursor {
+    <#
+        Remonte l'arbre visuel depuis l'élément cliqué jusqu'à la ligne de
+        liste qui le contient. Nécessaire parce qu'un clic droit ne
+        sélectionne pas la ligne de lui-même dans un ListView.
+    #>
+    param([Parameter(Mandatory)]$Source)
+
+    $current = $Source
+    while ($null -ne $current -and $current -isnot [System.Windows.Controls.ListViewItem]) {
+        if ($current -isnot [System.Windows.DependencyObject]) { return $null }
+        $current = [System.Windows.Media.VisualTreeHelper]::GetParent($current)
+    }
+    return $current
 }
 
 function Show-FwmMessage {
@@ -163,7 +188,7 @@ function Show-FwmMessage {
 }
 
 # ---------------------------------------------------------------------------
-# Fenetre "Nouveau blocage"
+# Fenêtre « Nouveau blocage »
 # ---------------------------------------------------------------------------
 
 function Show-FwmNewRuleSetDialog {
@@ -181,34 +206,61 @@ function Show-FwmNewRuleSetDialog {
     $btnCheckAll = $window.FindName('BtnCheckAll')
     $btnUncheckAll = $window.FindName('BtnUncheckAll')
     $txtSummary = $window.FindName('TxtSummary')
+    $expLog = $window.FindName('ExpLog')
+    $txtLog = $window.FindName('TxtLog')
     $btnCreate = $window.FindName('BtnCreate')
     $btnCancel = $window.FindName('BtnCancel')
 
-    # Etat partage entre les gestionnaires d'evenements.
+    # État partagé entre les gestionnaires d'événements.
     $state = [PSCustomObject]@{
-        Items  = New-Object System.Collections.ObjectModel.ObservableCollection[FwmExeItem]
-        Root   = $null
-        Result = $null
+        Items   = New-Object System.Collections.ObjectModel.ObservableCollection[FwmExeItem]
+        Root    = $null
+        Result  = $null
+        # Suspend le recalcul pendant les opérations en lot, qui déclencheraient
+        # sinon un événement par élément.
+        Suspend = $false
     }
     $lstExes.ItemsSource = $state.Items
 
+    $appendLog = {
+        param([string]$Line)
+
+        $txtLog.AppendText("$Line`r`n")
+        $txtLog.ScrollToEnd()
+    }.GetNewClosure()
+
     $updateSummary = {
+        if ($state.Suspend) { return }
+
         $selected = @($state.Items | Where-Object { $_.Selected }).Count
         $perExe = if ($cmbDirection.SelectedIndex -eq 0) { 2 } else { 1 }
         $rules = $selected * $perExe
 
         $name = $txtSetName.Text.Trim()
-        $txtGroupPreview.Text = if ($name) { "Groupe pare-feu : *FWM - $name" } else { 'Groupe pare-feu : *FWM - ...' }
+        $txtGroupPreview.Text = if ($name) {
+            "Groupe pare-feu : *FWM - $name"
+        }
+        else {
+            'Groupe pare-feu : *FWM - ...'
+        }
 
         if ($state.Items.Count -eq 0) {
             $txtSummary.Text = 'Choisissez un dossier pour commencer.'
         }
         else {
-            $txtSummary.Text = "$selected executable(s) selectionne(s) sur $($state.Items.Count) -> $rules regle(s) a creer."
+            $picked = Format-FwmCount $selected 'exécutable sélectionné' 'exécutables sélectionnés'
+            $planned = Format-FwmCount $rules 'règle à créer' 'règles à créer'
+            $txtSummary.Text = "$picked sur $($state.Items.Count) — $planned."
         }
 
         $btnCreate.IsEnabled = ($selected -gt 0 -and $name.Length -gt 0)
     }.GetNewClosure()
+
+    # Le décompte est mis à jour sur l'événement de changement de l'objet, et
+    # non sur un événement souris : PreviewMouseLeftButtonUp se déclenche
+    # pendant la phase de tunnelage, donc AVANT que la case ne bascule, ce qui
+    # décalait le total d'un cran à chaque clic.
+    $onItemChanged = { & $updateSummary }.GetNewClosure()
 
     $loadFolder = {
         param([string]$Path)
@@ -220,13 +272,15 @@ function Show-FwmNewRuleSetDialog {
             return
         }
 
-        $state.Items.Clear()
         $resolved = (Resolve-Path -LiteralPath $Path).Path
+
+        $state.Suspend = $true
+        $state.Items.Clear()
         $state.Root = $resolved
         $txtFolder.Text = $resolved
 
-        # @() indispensable : la sortie d'une fonction est deroulee, zero
-        # executable donnerait $null.
+        # @() indispensable : la sortie d'une fonction est déroulée, zéro
+        # exécutable donnerait $null.
         $exes = @(Get-FwmExecutable -Path $resolved)
 
         foreach ($exe in ($exes | Sort-Object FullName)) {
@@ -234,30 +288,93 @@ function Show-FwmNewRuleSetDialog {
             $item.Selected = $true
             $item.Name = $exe.Name
             $item.FullName = $exe.FullName
-            $item.SizeText = Format-FwmSize -Bytes $exe.Length
-
-            $relative = $exe.FullName
-            if ($relative.StartsWith($resolved, [StringComparison]::OrdinalIgnoreCase)) {
-                $relative = $relative.Substring($resolved.Length).TrimStart('\')
-            }
-            $item.RelativePath = $relative
-
+            $item.SizeText = Format-FwmSize $exe.Length
+            $item.RelativePath = Format-FwmRelativePath $exe.FullName $resolved
+            $item.add_PropertyChanged($onItemChanged)
             $state.Items.Add($item)
         }
 
+        $state.Suspend = $false
+
         if ($state.Items.Count -eq 0) {
-            Show-FwmMessage -Text "Aucun executable trouve dans :`n$resolved`n`nSous-dossiers inclus." -Icon Warning -Owner $window
+            Show-FwmMessage -Text "Aucun exécutable trouvé dans :`n$resolved`n`nSous-dossiers inclus." -Icon Warning -Owner $window
         }
 
-        # Propose le nom du dossier comme nom d'ensemble, sans ecraser une
-        # saisie deja faite par l'utilisateur.
+        # Propose le nom du dossier comme nom d'ensemble, sans écraser une
+        # saisie déjà faite par l'utilisateur.
         if ([string]::IsNullOrWhiteSpace($txtSetName.Text)) {
-            $suggestion = (Split-Path -Path $resolved -Leaf) -replace '[*?\[\]]', ''
-            $txtSetName.Text = $suggestion
+            $txtSetName.Text = (Split-Path -Path $resolved -Leaf) -replace '[*?\[\]]', ''
         }
 
         & $updateSummary
     }.GetNewClosure()
+
+    # --- Menu contextuel de la liste des exécutables ---
+
+    $copySelectedPaths = {
+        $paths = @($lstExes.SelectedItems | ForEach-Object { $_.FullName })
+        if ($paths.Count -eq 0) { return }
+        Copy-FwmTextToClipboard -Text ($paths -join "`r`n")
+    }.GetNewClosure()
+
+    $contextMenu = New-Object System.Windows.Controls.ContextMenu
+
+    $menuCopyPath = New-Object System.Windows.Controls.MenuItem
+    $menuCopyPath.Header = 'Copier le chemin complet'
+    $menuCopyPath.InputGestureText = 'Ctrl+C'
+    $menuCopyPath.Add_Click($copySelectedPaths)
+    $null = $contextMenu.Items.Add($menuCopyPath)
+
+    $menuCopyName = New-Object System.Windows.Controls.MenuItem
+    $menuCopyName.Header = 'Copier le nom du fichier'
+    $menuCopyName.Add_Click({
+            $names = @($lstExes.SelectedItems | ForEach-Object { $_.Name })
+            if ($names.Count -eq 0) { return }
+            Copy-FwmTextToClipboard -Text ($names -join "`r`n")
+        }.GetNewClosure())
+    $null = $contextMenu.Items.Add($menuCopyName)
+
+    $null = $contextMenu.Items.Add((New-Object System.Windows.Controls.Separator))
+
+    $menuOpenFolder = New-Object System.Windows.Controls.MenuItem
+    $menuOpenFolder.Header = "Ouvrir le dossier contenant"
+    $menuOpenFolder.Add_Click({
+            $first = @($lstExes.SelectedItems)[0]
+            if (-not $first) { return }
+            # /select met le fichier en surbrillance dans l'Explorateur.
+            Start-Process -FilePath 'explorer.exe' -ArgumentList "/select,`"$($first.FullName)`""
+        }.GetNewClosure())
+    $null = $contextMenu.Items.Add($menuOpenFolder)
+
+    $lstExes.ContextMenu = $contextMenu
+
+    # Un clic droit ne sélectionne pas la ligne de lui-même : sans cela, le
+    # menu contextuel agirait sur une sélection sans rapport avec la ligne
+    # visée.
+    # Les arguments d'evenement sont lus dans $args plutot que declares en
+    # parametres : $EventArgs est une variable automatique de PowerShell, et
+    # l'emetteur ne sert pas ici.
+    $lstExes.Add_PreviewMouseRightButtonDown({
+            $evt = $args[1]
+
+            $row = Get-FwmListViewItemUnderCursor -Source $evt.OriginalSource
+            if ($row -and -not $row.IsSelected) {
+                $lstExes.SelectedItems.Clear()
+                $row.IsSelected = $true
+            }
+        }.GetNewClosure())
+
+    $lstExes.Add_KeyDown({
+            $evt = $args[1]
+
+            $ctrl = [System.Windows.Input.Keyboard]::Modifiers -band [System.Windows.Input.ModifierKeys]::Control
+            if ($ctrl -and $evt.Key -eq [System.Windows.Input.Key]::C) {
+                & $copySelectedPaths
+                $evt.Handled = $true
+            }
+        }.GetNewClosure())
+
+    # --- Gestionnaires ---
 
     $btnBrowse.Add_Click({
             $folder = Select-FwmFolder
@@ -273,19 +390,18 @@ function Show-FwmNewRuleSetDialog {
     $txtSetName.Add_TextChanged({ & $updateSummary }.GetNewClosure())
     $cmbDirection.Add_SelectionChanged({ & $updateSummary }.GetNewClosure())
 
-    # Les cases a cocher modifient l'objet lie ; on rafraichit le decompte
-    # au relachement de la souris sur la liste.
-    $lstExes.Add_PreviewMouseLeftButtonUp({ & $updateSummary }.GetNewClosure())
+    $setAllSelected = {
+        param([bool]$Value)
 
-    $btnCheckAll.Add_Click({
-            foreach ($item in $state.Items) { $item.Selected = $true }
-            & $updateSummary
-        }.GetNewClosure())
+        # Un seul recalcul en fin d'opération plutôt qu'un par élément.
+        $state.Suspend = $true
+        foreach ($item in $state.Items) { $item.Selected = $Value }
+        $state.Suspend = $false
+        & $updateSummary
+    }.GetNewClosure()
 
-    $btnUncheckAll.Add_Click({
-            foreach ($item in $state.Items) { $item.Selected = $false }
-            & $updateSummary
-        }.GetNewClosure())
+    $btnCheckAll.Add_Click({ & $setAllSelected $true }.GetNewClosure())
+    $btnUncheckAll.Add_Click({ & $setAllSelected $false }.GetNewClosure())
 
     $btnCancel.Add_Click({ $window.DialogResult = $false }.GetNewClosure())
 
@@ -294,7 +410,7 @@ function Show-FwmNewRuleSetDialog {
             $chosen = @($state.Items | Where-Object { $_.Selected })
 
             if ($chosen.Count -eq 0) {
-                Show-FwmMessage -Text 'Aucun executable selectionne.' -Icon Warning -Owner $window
+                Show-FwmMessage -Text 'Aucun exécutable sélectionné.' -Icon Warning -Owner $window
                 return
             }
 
@@ -306,8 +422,30 @@ function Show-FwmNewRuleSetDialog {
 
             $btnCreate.IsEnabled = $false
             $btnCancel.IsEnabled = $false
-            $txtSummary.Text = "Creation en cours pour $($chosen.Count) executable(s)..."
+            $expLog.IsExpanded = $true
+            $txtLog.Clear()
+
+            & $appendLog "Ensemble : $setName"
+            & $appendLog "Groupe   : *FWM - $setName"
+            & $appendLog "Dossier  : $($state.Root)"
+            & $appendLog ('-' * 60)
+
+            $txtSummary.Text = "Création en cours pour $(Format-FwmCount $chosen.Count 'exécutable' 'exécutables')..."
             Invoke-FwmUiRefresh -Window $window
+
+            # Rend compte règle par règle pendant que l'opération se déroule,
+            # au lieu de laisser la fenêtre figée jusqu'au bilan.
+            $notify = {
+                param($info)
+
+                $prefix = switch ($info.Status) {
+                    'Created' { '  créée   ' }
+                    'Skipped' { '  ignorée ' }
+                    default { '  ÉCHEC   ' }
+                }
+                & $appendLog "$prefix $($info.DisplayName)"
+                Invoke-FwmUiRefresh -Window $window
+            }.GetNewClosure()
 
             try {
                 $files = foreach ($item in $chosen) { Get-Item -LiteralPath $item.FullName }
@@ -316,12 +454,26 @@ function Show-FwmNewRuleSetDialog {
                     -Executable $files `
                     -Root $state.Root `
                     -Direction $direction `
+                    -Notify $notify `
                     -Confirm:$false
 
-                $window.DialogResult = $true
+                & $appendLog ('-' * 60)
+                & $appendLog "Terminé : $($state.Result.Created) créée(s), $($state.Result.Skipped) ignorée(s), $($state.Result.Failed) en échec."
+
+                if ($state.Result.Failed -eq 0) {
+                    $window.DialogResult = $true
+                }
+                else {
+                    # On garde la fenêtre ouverte pour que le journal reste
+                    # consultable en cas d'échec partiel.
+                    $btnCancel.IsEnabled = $true
+                    $btnCancel.Content = 'Fermer'
+                    $txtSummary.Text = "$($state.Result.Failed) règle(s) en échec. Voir le journal."
+                }
             }
             catch {
-                Show-FwmMessage -Text "La creation a echoue :`n`n$_" -Icon Error -Owner $window
+                & $appendLog "ERREUR : $_"
+                Show-FwmMessage -Text "La création a échoué :`n`n$_" -Icon Error -Owner $window
                 $btnCreate.IsEnabled = $true
                 $btnCancel.IsEnabled = $true
                 & $updateSummary
@@ -333,7 +485,7 @@ function Show-FwmNewRuleSetDialog {
 }
 
 # ---------------------------------------------------------------------------
-# Fenetre principale
+# Fenêtre principale
 # ---------------------------------------------------------------------------
 
 function Show-FwmMainWindow {
@@ -342,6 +494,7 @@ function Show-FwmMainWindow {
     $btnNew = $window.FindName('BtnNew')
     $btnRemove = $window.FindName('BtnRemove')
     $btnRefresh = $window.FindName('BtnRefresh')
+    $btnOpenFirewall = $window.FindName('BtnOpenFirewall')
     $btnElevate = $window.FindName('BtnElevate')
     $borderElevation = $window.FindName('BorderElevation')
     $lstSets = $window.FindName('LstSets')
@@ -357,7 +510,7 @@ function Show-FwmMainWindow {
     }
 
     $refresh = {
-        $txtStatus.Text = 'Lecture des regles du pare-feu...'
+        $txtStatus.Text = 'Lecture des règles du pare-feu...'
         Invoke-FwmUiRefresh -Window $window
 
         try {
@@ -391,20 +544,38 @@ function Show-FwmMainWindow {
         $totalRules = ($sets | Measure-Object -Property RuleCount -Sum).Sum
         if (-not $totalRules) { $totalRules = 0 }
 
-        $elevationNote = if ($isElevated) { 'administrateur' } else { 'lecture seule' }
-        $txtStatus.Text = "$($items.Count) ensemble(s), $totalRules regle(s) - session $elevationNote."
+        $setsText = Format-FwmCount $items.Count 'ensemble' 'ensembles'
+        $rulesText = Format-FwmCount $totalRules 'règle' 'règles'
+        $mode = if ($isElevated) { 'administrateur' } else { 'lecture seule' }
+        $txtStatus.Text = "$setsText, $rulesText — session $mode."
     }.GetNewClosure()
 
     $btnRefresh.Add_Click({ & $refresh }.GetNewClosure())
+
+    $btnOpenFirewall.Add_Click({
+            try {
+                # Windows ne permet pas d'ouvrir la console sur un groupe
+                # précis : elle s'ouvre sur la vue par défaut.
+                Start-Process -FilePath 'mmc.exe' -ArgumentList 'wf.msc'
+            }
+            catch {
+                Show-FwmMessage -Text "Impossible d'ouvrir le Pare-feu Windows :`n`n$_" -Icon Warning -Owner $window
+            }
+        }.GetNewClosure())
 
     $btnNew.Add_Click({
             $result = Show-FwmNewRuleSetDialog -Owner $window
             & $refresh
 
             if ($result) {
-                $message = "Ensemble '$($result.SetName)' : $($result.Created) regle(s) creee(s)"
-                if ($result.Skipped -gt 0) { $message += ", $($result.Skipped) deja presente(s)" }
-                if ($result.Failed -gt 0) { $message += ", $($result.Failed) en echec" }
+                $created = Format-FwmCount $result.Created 'règle créée' 'règles créées'
+                $message = "Ensemble « $($result.SetName) » : $created"
+                if ($result.Skipped -gt 0) {
+                    $message += ", $(Format-FwmCount $result.Skipped 'déjà présente' 'déjà présentes')"
+                }
+                if ($result.Failed -gt 0) {
+                    $message += ", $(Format-FwmCount $result.Failed 'en échec' 'en échec')"
+                }
                 $txtStatus.Text = "$message."
             }
         }.GetNewClosure())
@@ -412,16 +583,19 @@ function Show-FwmMainWindow {
     $btnRemove.Add_Click({
             $selected = @($lstSets.SelectedItems)
             if ($selected.Count -eq 0) {
-                Show-FwmMessage -Text 'Selectionnez au moins un ensemble dans la liste.' -Icon Warning -Owner $window
+                Show-FwmMessage -Text 'Sélectionnez au moins un ensemble dans la liste.' -Icon Warning -Owner $window
                 return
             }
 
             $names = @($selected | ForEach-Object { $_.SetName })
             $ruleTotal = ($selected | Measure-Object -Property RuleCount -Sum).Sum
 
+            $setsText = Format-FwmCount $names.Count 'ensemble' 'ensembles'
+            $rulesText = Format-FwmCount $ruleTotal 'règle' 'règles'
+
             $confirmation = [System.Windows.MessageBox]::Show(
                 $window,
-                "Supprimer $($names.Count) ensemble(s) et $ruleTotal regle(s) ?`n`n$($names -join "`n")`n`nLes logiciels concernes retrouveront leur acces reseau.",
+                "Supprimer $setsText et $rulesText ?`n`n$($names -join "`n")`n`nLes logiciels concernés retrouveront leur accès réseau.",
                 'Confirmer la suppression',
                 [System.Windows.MessageBoxButton]::YesNo,
                 [System.Windows.MessageBoxImage]::Warning
@@ -443,13 +617,14 @@ function Show-FwmMainWindow {
                     }
                 }
                 catch {
-                    Show-FwmMessage -Text "Echec sur l'ensemble '$name' :`n`n$_" -Icon Error -Owner $window
+                    Show-FwmMessage -Text "Échec sur l'ensemble « $name » :`n`n$_" -Icon Error -Owner $window
                 }
             }
 
             & $refresh
-            $suffix = if ($failed -gt 0) { ", $failed en echec" } else { '' }
-            $txtStatus.Text = "$removed regle(s) supprimee(s)$suffix."
+            $removedText = Format-FwmCount $removed 'règle supprimée' 'règles supprimées'
+            $suffix = if ($failed -gt 0) { ", $failed en échec" } else { '' }
+            $txtStatus.Text = "$removedText$suffix."
         }.GetNewClosure())
 
     $btnElevate.Add_Click({
@@ -460,7 +635,7 @@ function Show-FwmMainWindow {
                 $window.Close()
             }
             catch {
-                Show-FwmMessage -Text "Elevation refusee ou impossible :`n`n$_" -Icon Warning -Owner $window
+                Show-FwmMessage -Text "Élévation refusée ou impossible :`n`n$_" -Icon Warning -Owner $window
             }
         }.GetNewClosure())
 

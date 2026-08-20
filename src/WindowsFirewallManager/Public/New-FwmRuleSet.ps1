@@ -34,6 +34,14 @@ function New-FwmRuleSet {
     .PARAMETER Direction
         Sens du trafic a bloquer. 'Both' par defaut.
 
+    .PARAMETER Notify
+        Bloc de script appele apres chaque regle traitee, avec un objet
+        portant Status ('Created', 'Skipped' ou 'Failed'), DisplayName, Path
+        et Direction.
+
+        Destine aux interfaces : l'operation etant synchrone, c'est le seul
+        moyen d'afficher l'avancement plutot que d'attendre le bilan final.
+
     .EXAMPLE
         New-FwmRuleSet -SetName 'Spotify' -Path "$env:APPDATA\Spotify"
 
@@ -59,12 +67,30 @@ function New-FwmRuleSet {
         [string]$Root,
 
         [ValidateSet('Inbound', 'Outbound', 'Both')]
-        [string]$Direction = 'Both'
+        [string]$Direction = 'Both',
+
+        [scriptblock]$Notify
     )
 
     # Valide le nom et construit le groupe. Leve si le nom est inexploitable.
     $group = Resolve-FwmGroupName -SetName $SetName
     $cleanName = $SetName.Trim()
+
+    # Rend compte d'une regle au fur et a mesure. L'operation etant synchrone,
+    # c'est le seul moyen pour une interface d'afficher l'avancement plutot
+    # que de rester figee jusqu'au bilan final.
+    $report = {
+        param([string]$Status, [string]$DisplayName, [string]$Path, [string]$RuleDirection)
+
+        if (-not $Notify) { return }
+
+        & $Notify ([PSCustomObject]@{
+                Status      = $Status
+                DisplayName = $DisplayName
+                Path        = $Path
+                Direction   = $RuleDirection
+            })
+    }
 
     if ($PSCmdlet.ParameterSetName -eq 'FromPath') {
         # Le @() est indispensable : la sortie d'une fonction est deroulee,
@@ -109,14 +135,15 @@ function New-FwmRuleSet {
     foreach ($exe in $executables) {
         foreach ($dir in $directions) {
             $key = "$($exe.FullName)|$dir"
+            $short = if ($dir -eq 'Inbound') { 'In' } else { 'Out' }
+            $displayName = "$group - $($exe.Name) ($short)"
+
             if ($existing.ContainsKey($key)) {
                 Write-Verbose "Deja couvert, ignore : $($exe.Name) ($dir)"
                 $skipped++
+                & $report 'Skipped' $displayName $exe.FullName $dir
                 continue
             }
-
-            $short = if ($dir -eq 'Inbound') { 'In' } else { 'Out' }
-            $displayName = "$group - $($exe.Name) ($short)"
 
             if (-not $PSCmdlet.ShouldProcess($exe.FullName, "Bloquer le trafic $dir")) {
                 continue
@@ -142,10 +169,12 @@ function New-FwmRuleSet {
                 # fois dans la liste fournie a -Executable.
                 $existing[$key] = $true
                 Write-Verbose "Cree : $displayName"
+                & $report 'Created' $displayName $exe.FullName $dir
             }
             catch {
                 Write-Error "Echec de la creation de '$displayName' : $_"
                 $failed++
+                & $report 'Failed' $displayName $exe.FullName $dir
             }
         }
     }
