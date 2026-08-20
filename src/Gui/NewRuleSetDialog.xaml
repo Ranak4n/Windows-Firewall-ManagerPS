@@ -59,12 +59,12 @@
             </Setter>
         </Style>
 
-        <Style x:Key="FieldLabel" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#FF3C4658"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Margin" Value="0,0,0,5"/>
-        </Style>
-
+        <!--
+            WPF ne permet pas de sélectionner le texte d'un TextBlock : la
+            propriété IsTextSelectionEnabled appartient à WinUI, pas à WPF.
+            Tous les textes fixes sont donc des TextBox en lecture seule et
+            sans bordure, au rendu identique mais sélectionnables.
+        -->
         <Style x:Key="SelectableText" TargetType="TextBox">
             <Setter Property="IsReadOnly" Value="True"/>
             <Setter Property="BorderThickness" Value="0"/>
@@ -72,6 +72,24 @@
             <Setter Property="Padding" Value="0"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
             <Setter Property="Cursor" Value="IBeam"/>
+        </Style>
+
+        <!-- Variante alignée à gauche, pour ne pas capter le curseur sur
+             toute la largeur de la ligne. -->
+        <Style x:Key="SelectableLabel" TargetType="TextBox" BasedOn="{StaticResource SelectableText}">
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="TextWrapping" Value="NoWrap"/>
+        </Style>
+
+        <Style x:Key="FieldLabel" TargetType="TextBox" BasedOn="{StaticResource SelectableLabel}">
+            <Setter Property="Foreground" Value="#FF3C4658"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,0,0,5"/>
+        </Style>
+
+        <Style x:Key="HintText" TargetType="TextBox" BasedOn="{StaticResource SelectableText}">
+            <Setter Property="Foreground" Value="#FF8A93A6"/>
+            <Setter Property="FontSize" Value="12"/>
         </Style>
     </Window.Resources>
 
@@ -89,7 +107,7 @@
 
         <!-- Étape 1 : dossier -->
         <StackPanel Grid.Row="0">
-            <TextBlock Text="1. Dossier du logiciel" Style="{StaticResource FieldLabel}"/>
+            <TextBox Text="1. Dossier du logiciel" Style="{StaticResource FieldLabel}"/>
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -100,23 +118,22 @@
                 <Button x:Name="BtnBrowse" Grid.Column="1" Content="Parcourir..."
                         Style="{StaticResource QuietButton}" Margin="8,0,0,0"/>
             </Grid>
-            <TextBlock Text="Tous les exécutables du dossier et de ses sous-dossiers seront proposés."
-                       Foreground="#FF8A93A6" FontSize="12" Margin="0,5,0,0"/>
+            <TextBox Text="Tous les exécutables du dossier et de ses sous-dossiers seront proposés."
+                     Style="{StaticResource HintText}" Margin="0,5,0,0"/>
         </StackPanel>
 
         <!-- Étape 2 : nom -->
         <StackPanel Grid.Row="1" Margin="0,16,0,0">
-            <TextBlock Text="2. Nom de l'ensemble" Style="{StaticResource FieldLabel}"/>
+            <TextBox Text="2. Nom de l'ensemble" Style="{StaticResource FieldLabel}"/>
             <TextBox x:Name="TxtSetName" Padding="8,7" BorderBrush="#FFD5DAE3"
                      VerticalContentAlignment="Center"/>
-            <TextBox x:Name="TxtGroupPreview" Style="{StaticResource SelectableText}"
-                     Foreground="#FF8A93A6" FontSize="12" Margin="0,5,0,0"
+            <TextBox x:Name="TxtGroupPreview" Style="{StaticResource HintText}" Margin="0,5,0,0"
                      Text="Groupe pare-feu : *FWM - ..."/>
         </StackPanel>
 
         <!-- Étape 3 : sens -->
         <StackPanel Grid.Row="2" Margin="0,16,0,0">
-            <TextBlock Text="3. Trafic à bloquer" Style="{StaticResource FieldLabel}"/>
+            <TextBox Text="3. Trafic à bloquer" Style="{StaticResource FieldLabel}"/>
             <ComboBox x:Name="CmbDirection" Padding="8,6" BorderBrush="#FFD5DAE3" SelectedIndex="0">
                 <ComboBoxItem Content="Entrant et sortant (blocage complet)"/>
                 <ComboBoxItem Content="Sortant uniquement"/>
@@ -130,8 +147,8 @@
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="4. Exécutables à bloquer" Style="{StaticResource FieldLabel}"
-                       VerticalAlignment="Center"/>
+            <TextBox Grid.Column="0" Text="4. Exécutables à bloquer" Style="{StaticResource FieldLabel}"
+                     VerticalAlignment="Center"/>
             <StackPanel Grid.Column="1" Orientation="Horizontal">
                 <Button x:Name="BtnCheckAll" Content="Tout cocher" Style="{StaticResource QuietButton}"/>
                 <Button x:Name="BtnUncheckAll" Content="Tout décocher" Style="{StaticResource QuietButton}" Margin="8,0,0,0"/>
@@ -140,6 +157,7 @@
 
         <ListView x:Name="LstExes" Grid.Row="4"
                   SelectionMode="Extended"
+                  MinHeight="130"
                   BorderBrush="#FFD5DAE3" BorderThickness="1" Background="White"
                   ScrollViewer.HorizontalScrollBarVisibility="Auto">
             <ListView.View>

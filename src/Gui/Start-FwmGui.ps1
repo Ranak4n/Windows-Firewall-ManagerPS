@@ -10,6 +10,12 @@
     PowerShell 7 est requis : la fenêtre a besoin d'un thread STA (que pwsh
     fournit par défaut) et le sélecteur de dossier moderne n'existe qu'à
     partir de .NET 8.
+
+    ATTENTION aux fermetures : GetNewClosure() ne capture que la portée
+    LOCALE. Un bloc créé à l'intérieur d'un gestionnaire d'événement ne
+    re-capture pas ce que le gestionnaire avait lui-même capturé. Tout bloc
+    destiné à être appelé depuis le module (les blocs -Notify) doit donc être
+    défini au niveau de la fonction, jamais dans un gestionnaire.
 #>
 [CmdletBinding()]
 param()
@@ -116,6 +122,36 @@ function Invoke-FwmUiRefresh {
     )
 }
 
+function Set-FwmLogBehavior {
+    <#
+        Agrandit la fenêtre à l'ouverture du journal et la réduit à sa
+        fermeture. Sans cela le journal mange la place de la liste, qui
+        devient inutilisable sans redimensionnement manuel.
+    #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Configure des gestionnaires WPF, sans effet de bord système.')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSReviewUnusedParameter', '',
+        Justification = 'Window et ExtraHeight sont utilisés dans les blocs de script des gestionnaires, que l''analyseur n''inspecte pas.')]
+    param(
+        [Parameter(Mandatory)]$Window,
+        [Parameter(Mandatory)]$Expander,
+        [int]$ExtraHeight = 190
+    )
+
+    $Expander.Add_Expanded({
+            if ($Window.WindowState -ne [System.Windows.WindowState]::Normal) { return }
+            $available = [System.Windows.SystemParameters]::WorkArea.Height
+            $Window.Height = [Math]::Min($Window.ActualHeight + $ExtraHeight, $available)
+        }.GetNewClosure())
+
+    $Expander.Add_Collapsed({
+            if ($Window.WindowState -ne [System.Windows.WindowState]::Normal) { return }
+            $Window.Height = [Math]::Max($Window.ActualHeight - $ExtraHeight, $Window.MinHeight)
+        }.GetNewClosure())
+}
+
 function Select-FwmFolder {
     param([string]$Title = 'Choisissez le dossier du logiciel')
 
@@ -165,6 +201,60 @@ function Get-FwmListViewItemUnderCursor {
         $current = [System.Windows.Media.VisualTreeHelper]::GetParent($current)
     }
     return $current
+}
+
+function New-FwmCopyMenuItem {
+    <#
+        Fabrique une entrée de menu contextuel qui copie une propriété des
+        éléments sélectionnés d'une liste.
+    #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Construit un objet WPF en mémoire.')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSReviewUnusedParameter', '',
+        Justification = 'ListView et Property sont utilisés dans le bloc de script du gestionnaire, que l''analyseur n''inspecte pas.')]
+    param(
+        [Parameter(Mandatory)][string]$Header,
+        [Parameter(Mandatory)]$ListView,
+        [Parameter(Mandatory)][string]$Property,
+        [string]$Gesture
+    )
+
+    $menuItem = New-Object System.Windows.Controls.MenuItem
+    $menuItem.Header = $Header
+    if ($Gesture) { $menuItem.InputGestureText = $Gesture }
+
+    $menuItem.Add_Click({
+            $values = @($ListView.SelectedItems | ForEach-Object { $_.$Property })
+            if ($values.Count -eq 0) { return }
+            Copy-FwmTextToClipboard -Text ($values -join "`r`n")
+        }.GetNewClosure())
+
+    return $menuItem
+}
+
+function Enable-FwmRightClickSelection {
+    <#
+        Fait qu'un clic droit sélectionne d'abord la ligne visée : sans cela
+        le menu contextuel agirait sur une sélection sans rapport.
+    #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Configure un gestionnaire WPF, sans effet de bord système.')]
+    param([Parameter(Mandatory)]$ListView)
+
+    # Les arguments d'événement sont lus dans $args plutôt que déclarés en
+    # paramètres : $EventArgs est une variable automatique de PowerShell.
+    $ListView.Add_PreviewMouseRightButtonDown({
+            $evt = $args[1]
+
+            $row = Get-FwmListViewItemUnderCursor -Source $evt.OriginalSource
+            if ($row -and -not $row.IsSelected) {
+                $ListView.SelectedItems.Clear()
+                $row.IsSelected = $true
+            }
+        }.GetNewClosure())
 }
 
 function Show-FwmMessage {
@@ -222,11 +312,28 @@ function Show-FwmNewRuleSetDialog {
     }
     $lstExes.ItemsSource = $state.Items
 
+    Set-FwmLogBehavior -Window $window -Expander $expLog
+
     $appendLog = {
         param([string]$Line)
 
         $txtLog.AppendText("$Line`r`n")
         $txtLog.ScrollToEnd()
+    }.GetNewClosure()
+
+    # Défini ici, au niveau de la fonction, et surtout PAS dans le
+    # gestionnaire du bouton : ce bloc est appelé depuis le module, et une
+    # fermeture créée dans une autre fermeture ne capture pas $appendLog.
+    $notifyRule = {
+        param($info)
+
+        $prefix = switch ($info.Status) {
+            'Created' { '  créée   ' }
+            'Skipped' { '  ignorée ' }
+            default { '  ÉCHEC   ' }
+        }
+        & $appendLog "$prefix $($info.DisplayName)"
+        Invoke-FwmUiRefresh -Window $window
     }.GetNewClosure()
 
     $updateSummary = {
@@ -318,26 +425,12 @@ function Show-FwmNewRuleSetDialog {
     }.GetNewClosure()
 
     $contextMenu = New-Object System.Windows.Controls.ContextMenu
-
-    $menuCopyPath = New-Object System.Windows.Controls.MenuItem
-    $menuCopyPath.Header = 'Copier le chemin complet'
-    $menuCopyPath.InputGestureText = 'Ctrl+C'
-    $menuCopyPath.Add_Click($copySelectedPaths)
-    $null = $contextMenu.Items.Add($menuCopyPath)
-
-    $menuCopyName = New-Object System.Windows.Controls.MenuItem
-    $menuCopyName.Header = 'Copier le nom du fichier'
-    $menuCopyName.Add_Click({
-            $names = @($lstExes.SelectedItems | ForEach-Object { $_.Name })
-            if ($names.Count -eq 0) { return }
-            Copy-FwmTextToClipboard -Text ($names -join "`r`n")
-        }.GetNewClosure())
-    $null = $contextMenu.Items.Add($menuCopyName)
-
+    $null = $contextMenu.Items.Add((New-FwmCopyMenuItem -Header 'Copier le chemin complet' -ListView $lstExes -Property 'FullName' -Gesture 'Ctrl+C'))
+    $null = $contextMenu.Items.Add((New-FwmCopyMenuItem -Header 'Copier le nom du fichier' -ListView $lstExes -Property 'Name'))
     $null = $contextMenu.Items.Add((New-Object System.Windows.Controls.Separator))
 
     $menuOpenFolder = New-Object System.Windows.Controls.MenuItem
-    $menuOpenFolder.Header = "Ouvrir le dossier contenant"
+    $menuOpenFolder.Header = 'Ouvrir le dossier contenant'
     $menuOpenFolder.Add_Click({
             $first = @($lstExes.SelectedItems)[0]
             if (-not $first) { return }
@@ -347,22 +440,7 @@ function Show-FwmNewRuleSetDialog {
     $null = $contextMenu.Items.Add($menuOpenFolder)
 
     $lstExes.ContextMenu = $contextMenu
-
-    # Un clic droit ne sélectionne pas la ligne de lui-même : sans cela, le
-    # menu contextuel agirait sur une sélection sans rapport avec la ligne
-    # visée.
-    # Les arguments d'evenement sont lus dans $args plutot que declares en
-    # parametres : $EventArgs est une variable automatique de PowerShell, et
-    # l'emetteur ne sert pas ici.
-    $lstExes.Add_PreviewMouseRightButtonDown({
-            $evt = $args[1]
-
-            $row = Get-FwmListViewItemUnderCursor -Source $evt.OriginalSource
-            if ($row -and -not $row.IsSelected) {
-                $lstExes.SelectedItems.Clear()
-                $row.IsSelected = $true
-            }
-        }.GetNewClosure())
+    Enable-FwmRightClickSelection -ListView $lstExes
 
     $lstExes.Add_KeyDown({
             $evt = $args[1]
@@ -433,20 +511,6 @@ function Show-FwmNewRuleSetDialog {
             $txtSummary.Text = "Création en cours pour $(Format-FwmCount $chosen.Count 'exécutable' 'exécutables')..."
             Invoke-FwmUiRefresh -Window $window
 
-            # Rend compte règle par règle pendant que l'opération se déroule,
-            # au lieu de laisser la fenêtre figée jusqu'au bilan.
-            $notify = {
-                param($info)
-
-                $prefix = switch ($info.Status) {
-                    'Created' { '  créée   ' }
-                    'Skipped' { '  ignorée ' }
-                    default { '  ÉCHEC   ' }
-                }
-                & $appendLog "$prefix $($info.DisplayName)"
-                Invoke-FwmUiRefresh -Window $window
-            }.GetNewClosure()
-
             try {
                 $files = foreach ($item in $chosen) { Get-Item -LiteralPath $item.FullName }
 
@@ -454,11 +518,15 @@ function Show-FwmNewRuleSetDialog {
                     -Executable $files `
                     -Root $state.Root `
                     -Direction $direction `
-                    -Notify $notify `
+                    -Notify $notifyRule `
                     -Confirm:$false
 
                 & $appendLog ('-' * 60)
-                & $appendLog "Terminé : $($state.Result.Created) créée(s), $($state.Result.Skipped) ignorée(s), $($state.Result.Failed) en échec."
+                $summary = '{0}, {1}, {2}' -f
+                    (Format-FwmCount $state.Result.Created 'règle créée' 'règles créées'),
+                    (Format-FwmCount $state.Result.Skipped 'déjà présente' 'déjà présentes'),
+                    (Format-FwmCount $state.Result.Failed 'en échec' 'en échec')
+                & $appendLog "Terminé : $summary."
 
                 if ($state.Result.Failed -eq 0) {
                     $window.DialogResult = $true
@@ -468,7 +536,7 @@ function Show-FwmNewRuleSetDialog {
                     # consultable en cas d'échec partiel.
                     $btnCancel.IsEnabled = $true
                     $btnCancel.Content = 'Fermer'
-                    $txtSummary.Text = "$($state.Result.Failed) règle(s) en échec. Voir le journal."
+                    $txtSummary.Text = "$(Format-FwmCount $state.Result.Failed 'règle en échec' 'règles en échec'). Voir le journal."
                 }
             }
             catch {
@@ -500,6 +568,8 @@ function Show-FwmMainWindow {
     $lstSets = $window.FindName('LstSets')
     $txtStatus = $window.FindName('TxtStatus')
     $txtEmpty = $window.FindName('TxtEmpty')
+    $expLog = $window.FindName('ExpLog')
+    $txtLog = $window.FindName('TxtLog')
 
     $isElevated = Test-FwmElevation
 
@@ -508,6 +578,60 @@ function Show-FwmMainWindow {
         $btnNew.IsEnabled = $false
         $btnRemove.IsEnabled = $false
     }
+
+    Set-FwmLogBehavior -Window $window -Expander $expLog
+
+    $appendLog = {
+        param([string]$Line)
+
+        $txtLog.AppendText("$Line`r`n")
+        $txtLog.ScrollToEnd()
+    }.GetNewClosure()
+
+    # Défini au niveau de la fonction : ce bloc est appelé depuis le module.
+    $notifyRemoval = {
+        param($info)
+
+        $prefix = if ($info.Status -eq 'Removed') { '  supprimée ' } else { '  ÉCHEC     ' }
+        & $appendLog "$prefix $($info.DisplayName)"
+        Invoke-FwmUiRefresh -Window $window
+    }.GetNewClosure()
+
+    # --- Menu contextuel de la liste des ensembles ---
+
+    $contextMenu = New-Object System.Windows.Controls.ContextMenu
+    $null = $contextMenu.Items.Add((New-FwmCopyMenuItem -Header "Copier le nom de l'ensemble" -ListView $lstSets -Property 'SetName'))
+    $null = $contextMenu.Items.Add((New-FwmCopyMenuItem -Header "Copier le dossier d'origine" -ListView $lstSets -Property 'Root' -Gesture 'Ctrl+C'))
+    $null = $contextMenu.Items.Add((New-Object System.Windows.Controls.Separator))
+
+    $menuOpenRoot = New-Object System.Windows.Controls.MenuItem
+    $menuOpenRoot.Header = "Ouvrir le dossier d'origine"
+    $menuOpenRoot.Add_Click({
+            $first = @($lstSets.SelectedItems)[0]
+            if (-not $first -or -not $first.Root) { return }
+            if (-not (Test-Path -LiteralPath $first.Root)) {
+                Show-FwmMessage -Text "Le dossier n'existe plus :`n$($first.Root)" -Icon Warning -Owner $window
+                return
+            }
+            Start-Process -FilePath 'explorer.exe' -ArgumentList "`"$($first.Root)`""
+        }.GetNewClosure())
+    $null = $contextMenu.Items.Add($menuOpenRoot)
+
+    $lstSets.ContextMenu = $contextMenu
+    Enable-FwmRightClickSelection -ListView $lstSets
+
+    $lstSets.Add_KeyDown({
+            $evt = $args[1]
+
+            $ctrl = [System.Windows.Input.Keyboard]::Modifiers -band [System.Windows.Input.ModifierKeys]::Control
+            if ($ctrl -and $evt.Key -eq [System.Windows.Input.Key]::C) {
+                $roots = @($lstSets.SelectedItems | ForEach-Object { $_.Root })
+                if ($roots.Count -gt 0) { Copy-FwmTextToClipboard -Text ($roots -join "`r`n") }
+                $evt.Handled = $true
+            }
+        }.GetNewClosure())
+
+    # --- Rafraîchissement ---
 
     $refresh = {
         $txtStatus.Text = 'Lecture des règles du pare-feu...'
@@ -577,6 +701,7 @@ function Show-FwmMainWindow {
                     $message += ", $(Format-FwmCount $result.Failed 'en échec' 'en échec')"
                 }
                 $txtStatus.Text = "$message."
+                & $appendLog "$message."
             }
         }.GetNewClosure())
 
@@ -603,27 +728,37 @@ function Show-FwmMainWindow {
 
             if ($confirmation -ne [System.Windows.MessageBoxResult]::Yes) { return }
 
+            $expLog.IsExpanded = $true
+            $txtLog.Clear()
+            & $appendLog "Suppression de $setsText ($rulesText)"
+            & $appendLog ('-' * 60)
+
             $txtStatus.Text = 'Suppression en cours...'
             Invoke-FwmUiRefresh -Window $window
 
             $removed = 0
             $failed = 0
             foreach ($name in $names) {
+                & $appendLog "Ensemble « $name »"
                 try {
-                    $result = Remove-FwmRuleSet -SetName $name -Confirm:$false
+                    $result = Remove-FwmRuleSet -SetName $name -Notify $notifyRemoval -Confirm:$false
                     if ($result) {
                         $removed += $result.Removed
                         $failed += $result.Failed
                     }
                 }
                 catch {
+                    & $appendLog "ERREUR : $_"
                     Show-FwmMessage -Text "Échec sur l'ensemble « $name » :`n`n$_" -Icon Error -Owner $window
                 }
             }
 
             & $refresh
+
             $removedText = Format-FwmCount $removed 'règle supprimée' 'règles supprimées'
-            $suffix = if ($failed -gt 0) { ", $failed en échec" } else { '' }
+            $suffix = if ($failed -gt 0) { ", $(Format-FwmCount $failed 'en échec' 'en échec')" } else { '' }
+            & $appendLog ('-' * 60)
+            & $appendLog "Terminé : $removedText$suffix."
             $txtStatus.Text = "$removedText$suffix."
         }.GetNewClosure())
 

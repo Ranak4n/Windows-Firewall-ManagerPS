@@ -18,6 +18,13 @@ function Remove-FwmRuleSet {
         Nom exact de l'ensemble a supprimer. Accepte l'entree par pipeline
         depuis Get-FwmRuleSet.
 
+    .PARAMETER Notify
+        Bloc de script appele apres chaque regle traitee, avec un objet
+        portant Status ('Removed' ou 'Failed') et DisplayName.
+
+        Destine aux interfaces : l'operation etant synchrone, c'est le seul
+        moyen d'afficher l'avancement plutot que d'attendre le bilan final.
+
     .EXAMPLE
         Remove-FwmRuleSet -SetName 'Spotify'
 
@@ -26,14 +33,30 @@ function Remove-FwmRuleSet {
     #>
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
     [OutputType([PSCustomObject])]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSReviewUnusedParameter', '',
+        Justification = 'Notify est invoque depuis le bloc $report, que l''analyseur n''inspecte pas.')]
     param(
         [Parameter(Mandatory, Position = 0, ValueFromPipeline, ValueFromPipelineByPropertyName)]
         [ValidateNotNullOrEmpty()]
-        [string]$SetName
+        [string]$SetName,
+
+        [scriptblock]$Notify
     )
 
     process {
         $target = $SetName.Trim()
+
+        $report = {
+            param([string]$Status, [string]$DisplayName)
+
+            if (-not $Notify) { return }
+
+            & $Notify ([PSCustomObject]@{
+                    Status      = $Status
+                    DisplayName = $DisplayName
+                })
+        }
 
         # Egalite stricte, cote client : aucun motif ne peut elargir la cible.
         $sets = @(Get-FwmRuleSet | Where-Object { $_.SetName -eq $target })
@@ -61,10 +84,12 @@ function Remove-FwmRuleSet {
                     Remove-NetFirewallRule -Name $rule.Name -ErrorAction Stop
                     $removed++
                     Write-Verbose "Supprimee : $($rule.DisplayName)"
+                    & $report 'Removed' $rule.DisplayName
                 }
                 catch {
                     Write-Error "Echec de la suppression de '$($rule.DisplayName)' : $_"
                     $failed++
+                    & $report 'Failed' $rule.DisplayName
                 }
             }
         }

@@ -88,6 +88,34 @@ Describe 'Remove-FwmRuleSet' {
         }
     }
 
+    Context 'Compte rendu via -Notify' {
+
+        It 'signale chaque regle supprimee' {
+            $events = New-Object System.Collections.Generic.List[object]
+
+            Remove-FwmRuleSet -SetName 'Spotify' -Confirm:$false `
+                -Notify { param($info) $events.Add($info) }.GetNewClosure() | Out-Null
+
+            $events.Count | Should -Be 2
+            @($events | Where-Object { $_.Status -eq 'Removed' }).Count | Should -Be 2
+            $events[0].DisplayName | Should -Not -BeNullOrEmpty
+        }
+
+        It 'signale les echecs' {
+            Mock -ModuleName WindowsFirewallManager Remove-NetFirewallRule { throw 'Acces refuse' }
+            $events = New-Object System.Collections.Generic.List[object]
+
+            Remove-FwmRuleSet -SetName 'Spotify' -Confirm:$false -ErrorAction SilentlyContinue `
+                -Notify { param($info) $events.Add($info) }.GetNewClosure() | Out-Null
+
+            @($events | Where-Object { $_.Status -eq 'Failed' }).Count | Should -Be 2
+        }
+
+        It 'fonctionne sans -Notify' {
+            { Remove-FwmRuleSet -SetName 'Spotify' -Confirm:$false } | Should -Not -Throw
+        }
+    }
+
     Context 'Securites' {
 
         It 'ne touche a rien avec -WhatIf' {

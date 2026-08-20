@@ -98,6 +98,69 @@ Describe 'Interface graphique' {
         }
     }
 
+    Context 'Fermetures' {
+
+        It 'ne cree pas de fermeture a l interieur d un gestionnaire' {
+            # GetNewClosure() ne capture que la portee LOCALE. Un bloc cree
+            # dans un gestionnaire d'evenement ne re-capture pas ce que le
+            # gestionnaire avait lui-meme capture : appele plus tard depuis le
+            # module, il trouve ses variables a $null et echoue sur
+            # "The expression after '&' produced an object that was not valid".
+            # Verifie et reproduit : le motif plat fonctionne, l'imbrique non.
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+                $script:GuiScript, [ref]$null, [ref]$null)
+
+            $handlers = $ast.FindAll({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+                    $node.Member.Value -like 'Add_*'
+                }, $true)
+
+            $offenders = foreach ($handler in $handlers) {
+                foreach ($argument in $handler.Arguments) {
+
+                    # Le gestionnaire s'ecrit { ... }.GetNewClosure() : on
+                    # descend jusqu'au corps du bloc.
+                    $body = if ($argument -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+                        $argument.Member.Value -eq 'GetNewClosure') {
+                        $argument.Expression
+                    }
+                    elseif ($argument -is [System.Management.Automation.Language.ScriptBlockExpressionAst]) {
+                        $argument
+                    }
+                    if (-not $body) { continue }
+
+                    $nested = $body.FindAll({
+                            param($node)
+                            $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+                            $node.Member.Value -eq 'GetNewClosure'
+                        }, $true)
+
+                    if ($nested) {
+                        "$($handler.Member.Value) ligne $($handler.Extent.StartLineNumber)"
+                    }
+                }
+            }
+
+            @($offenders) -join ', ' | Should -BeNullOrEmpty
+        }
+
+        It 'trouve bien des gestionnaires a inspecter' {
+            # Sans ce garde-fou, le test precedent passerait a vide si
+            # l'extraction cessait de fonctionner.
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+                $script:GuiScript, [ref]$null, [ref]$null)
+
+            $handlers = @($ast.FindAll({
+                        param($node)
+                        $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+                        $node.Member.Value -like 'Add_*'
+                    }, $true))
+
+            $handlers.Count | Should -BeGreaterThan 10
+        }
+    }
+
     Context 'Script de lancement' {
 
         It 'ne contient aucune erreur de syntaxe' {
